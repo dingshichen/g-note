@@ -1,7 +1,7 @@
 import { useNoteStore } from '../../stores/noteStore'
 import { useUIStore } from '../../stores/uiStore'
 import { format } from 'date-fns'
-import FileText from 'lucide-react'
+import { FileText } from 'lucide-react'
 
 /**
  * 笔记列表组件

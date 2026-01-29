@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNoteStore } from '../stores/noteStore'
 import { useUIStore } from '../stores/uiStore'
 import SearchBar from '../components/common/SearchBar'
-import NoteList from '../components/note/NoteList'
-import FileText from 'lucide-react'
+import { FileText } from 'lucide-react'
 
 export default function Home() {
   const { notes, fetchNotes, fetchNote } = useNoteStore()
