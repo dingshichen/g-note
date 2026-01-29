@@ -20,6 +20,7 @@ function _interopNamespaceDefault(e) {
   n.default = e;
   return Object.freeze(n);
 }
+const fs__namespace = /* @__PURE__ */ _interopNamespaceDefault(fs);
 const git__namespace = /* @__PURE__ */ _interopNamespaceDefault(git);
 class FileService {
   userDataPath;
@@ -373,15 +374,33 @@ class GitService {
     if (this.initialized) return;
     try {
       try {
-        const gitRoot = await git__namespace.findRoot({ fs: git.fs, dir: this.repoDir });
+        const gitRoot = await git__namespace.findRoot({ fs: fs__namespace, filepath: this.repoDir });
         console.log("Git repository already exists at:", gitRoot);
       } catch (e) {
         await git__namespace.init({
-          fs: git.fs,
+          fs: fs__namespace,
           dir: this.repoDir,
           defaultBranch: "main"
         });
-        console.log("Git repository initialized");
+        const gitignorePath = `${this.repoDir}/.gitignore`;
+        if (!fs__namespace.existsSync(gitignorePath)) {
+          await fs__namespace.promises.writeFile(gitignorePath, "*.log\nnode_modules/\n.DS_Store\n");
+        }
+        await git__namespace.add({
+          fs: fs__namespace,
+          dir: this.repoDir,
+          filepath: ".gitignore"
+        });
+        await git__namespace.commit({
+          fs: fs__namespace,
+          dir: this.repoDir,
+          message: "Initial commit",
+          author: {
+            name: "G-Note",
+            email: "g-note@localhost"
+          }
+        });
+        console.log("Git repository initialized with initial commit");
       }
       this.initialized = true;
     } catch (error) {
@@ -397,16 +416,22 @@ class GitService {
   async autoCommit(noteId, message) {
     try {
       await this.ensureInitialized();
-      const note = await FileService$1.readFile(`notes/${noteId}.md`);
+      const filePath = `notes/${noteId}.md`;
+      try {
+        await fs__namespace.promises.access(`${this.repoDir}/${filePath}`);
+      } catch (e) {
+        console.error("Note file does not exist:", filePath);
+        return null;
+      }
       const timestamp = (/* @__PURE__ */ new Date()).toISOString();
       const commitMessage = message || `Auto-save note ${noteId} at ${timestamp}`;
       await git__namespace.add({
-        fs: git.fs,
+        fs: fs__namespace,
         dir: this.repoDir,
-        filepath: `notes/${noteId}.md`
+        filepath: filePath
       });
       const commitHash = await git__namespace.commit({
-        fs: git.fs,
+        fs: fs__namespace,
         dir: this.repoDir,
         message: commitMessage,
         author: {
@@ -430,8 +455,13 @@ class GitService {
   async getHistory(noteId, limit = 20) {
     try {
       await this.ensureInitialized();
+      try {
+        await git__namespace.resolveRef({ fs: fs__namespace, dir: this.repoDir, ref: "HEAD" });
+      } catch (e) {
+        return [];
+      }
       const log = await git__namespace.log({
-        fs: git.fs,
+        fs: fs__namespace,
         dir: this.repoDir,
         filepath: `notes/${noteId}.md`,
         depth: limit
@@ -457,13 +487,13 @@ class GitService {
   async checkoutVersion(noteId, commitHash) {
     try {
       await this.ensureInitialized();
-      const { content } = await git__namespace.readBlob({
-        fs: git.fs,
+      const blob = await git__namespace.readBlob({
+        fs: fs__namespace,
         dir: this.repoDir,
         oid: commitHash,
         filepath: `notes/${noteId}.md`
       });
-      const contentStr = Buffer.from(content).toString("utf-8");
+      const contentStr = Buffer.from(blob.blob).toString("utf-8");
       await FileService$1.writeFile(`notes/${noteId}.md`, contentStr);
       console.log("Checked out version:", commitHash);
       return contentStr;
@@ -482,21 +512,21 @@ class GitService {
   async getDiff(noteId, commitHash1, commitHash2) {
     try {
       await this.ensureInitialized();
-      const content1 = await git__namespace.readBlob({
-        fs: git.fs,
+      const blob1 = await git__namespace.readBlob({
+        fs: fs__namespace,
         dir: this.repoDir,
         oid: commitHash1,
         filepath: `notes/${noteId}.md`
       });
-      const content2 = await git__namespace.readBlob({
-        fs: git.fs,
+      const blob2 = await git__namespace.readBlob({
+        fs: fs__namespace,
         dir: this.repoDir,
         oid: commitHash2,
         filepath: `notes/${noteId}.md`
       });
       return {
-        oldContent: Buffer.from(content1.content).toString("utf-8"),
-        newContent: Buffer.from(content2.content).toString("utf-8")
+        oldContent: Buffer.from(blob1.blob).toString("utf-8"),
+        newContent: Buffer.from(blob2.blob).toString("utf-8")
       };
     } catch (error) {
       console.error("Error getting diff:", error);
@@ -513,22 +543,22 @@ class GitService {
   async push(remoteUrl, token, branch = "main") {
     try {
       await this.ensureInitialized();
-      const remotes = await git__namespace.listRemotes({ fs: git.fs, dir: this.repoDir });
+      const remotes = await git__namespace.listRemotes({ fs: fs__namespace, dir: this.repoDir });
       const hasOrigin = remotes.some((r) => r.remote === "origin");
       if (!hasOrigin) {
         await git__namespace.addRemote({
-          fs: git.fs,
+          fs: fs__namespace,
           dir: this.repoDir,
           remote: "origin",
           url: remoteUrl
         });
       }
       await git__namespace.push({
-        fs: git.fs,
+        fs: fs__namespace,
         http: require("isomorphic-git/http/node"),
         dir: this.repoDir,
         remote: "origin",
-        branch,
+        ref: `refs/heads/${branch}`,
         onAuth: () => ({ username: token, password: "" })
       });
       console.log("Push successful");
@@ -548,12 +578,22 @@ class GitService {
   async pull(remoteUrl, token, branch = "main") {
     try {
       await this.ensureInitialized();
+      const remotes = await git__namespace.listRemotes({ fs: fs__namespace, dir: this.repoDir });
+      const hasOrigin = remotes.some((r) => r.remote === "origin");
+      if (!hasOrigin) {
+        await git__namespace.addRemote({
+          fs: fs__namespace,
+          dir: this.repoDir,
+          remote: "origin",
+          url: remoteUrl
+        });
+      }
       await git__namespace.pull({
-        fs: git.fs,
+        fs: fs__namespace,
         http: require("isomorphic-git/http/node"),
         dir: this.repoDir,
         remote: "origin",
-        branch,
+        ref: `refs/heads/${branch}`,
         onAuth: () => ({ username: token, password: "" }),
         singleBranch: true
       });
@@ -572,12 +612,12 @@ class GitService {
   async createSnapshot(name) {
     try {
       await this.ensureInitialized();
-      const tagName = `snapshot-${Date.now()}`;
+      const tagName = name.includes("snapshot-") ? name : `snapshot-${name}-${Date.now()}`;
       await git__namespace.tag({
-        fs: git.fs,
+        fs: fs__namespace,
         dir: this.repoDir,
         ref: tagName,
-        message: name
+        object: "HEAD"
       });
       console.log("Snapshot created:", tagName);
       return tagName;
@@ -593,11 +633,11 @@ class GitService {
   async getSnapshots() {
     try {
       await this.ensureInitialized();
-      const tags = await git__namespace.listTags({ fs: git.fs, dir: this.repoDir });
+      const tags = await git__namespace.listTags({ fs: fs__namespace, dir: this.repoDir });
       const snapshots = [];
       for (const tag of tags) {
         if (tag.startsWith("snapshot-")) {
-          const ref = await git__namespace.resolveRef({ fs: git.fs, dir: this.repoDir, ref: tag });
+          const ref = await git__namespace.resolveRef({ fs: fs__namespace, dir: this.repoDir, ref: tag });
           snapshots.push({ name: tag, hash: ref });
         }
       }

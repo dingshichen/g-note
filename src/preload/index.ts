@@ -46,7 +46,9 @@ const api = {
     exists: (filePath: string) =>
       ipcRenderer.invoke('fs:exists', filePath),
     getUserDataPath: () =>
-      ipcRenderer.invoke('fs:get-user-data-path')
+      ipcRenderer.invoke('fs:get-user-data-path'),
+    openFolder: (folderPath?: string) =>
+      ipcRenderer.invoke('fs:open-folder', folderPath)
   },
 
   search: {

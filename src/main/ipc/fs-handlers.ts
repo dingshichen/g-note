@@ -1,4 +1,4 @@
-import { ipcMain, dialog } from 'electron'
+import { ipcMain, dialog, shell } from 'electron'
 import FileService from '../services/FileService'
 
 /**
@@ -105,6 +105,17 @@ export const registerFsHandlers = () => {
     try {
       const path = FileService.getUserDataPath()
       return { success: true, data: { path } }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 打开文件夹
+  ipcMain.handle('fs:open-folder', async (_event, folderPath?: string) => {
+    try {
+      const path = folderPath || FileService.getUserDataPath()
+      await shell.openPath(path)
+      return { success: true }
     } catch (error: any) {
       return { success: false, error: error.message }
     }

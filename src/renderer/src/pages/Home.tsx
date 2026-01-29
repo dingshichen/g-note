@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNoteStore } from '../stores/noteStore'
 import { useUIStore } from '../stores/uiStore'
 import SearchBar from '../components/common/SearchBar'
 import { FileText } from 'lucide-react'
 
 export default function Home() {
-  const { notes, fetchNotes, fetchNote } = useNoteStore()
+  const { notes, fetchNotes, fetchNote, createNote } = useNoteStore()
   const { setView } = useUIStore()
   const [searchResults, setSearchResults] = useState<typeof notes>([])
 
@@ -13,8 +13,15 @@ export default function Home() {
     fetchNotes()
   }, [])
 
-  const handleSearchResults = (results: typeof notes) => {
+  const handleSearchResults = useCallback((results: typeof notes) => {
     setSearchResults(results)
+  }, [])
+
+  const handleCreateNote = async () => {
+    const newNote = await createNote()
+    if (newNote) {
+      setView('editor')
+    }
   }
 
   const displayNotes = searchResults.length > 0 ? searchResults : notes
@@ -44,8 +51,8 @@ export default function Home() {
             <p className="text-muted-foreground mb-4">
               Create your first note to get started
             </p>
-            <button
-              onClick={() => setView('editor')}
+<button
+              onClick={handleCreateNote}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity"
             >
               Create Note

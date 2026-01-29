@@ -31,6 +31,7 @@ interface API {
     writeFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>
     exists: (filePath: string) => Promise<{ success: boolean; data?: { exists: boolean }; error?: string }>
     getUserDataPath: () => Promise<{ success: boolean; data?: { path: string }; error?: string }>
+    openFolder: (folderPath?: string) => Promise<{ success: boolean; error?: string }>
   }
 
   search: {

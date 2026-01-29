@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useUIStore } from '../../stores/uiStore'
 import { useNoteStore } from '../../stores/noteStore'
-import { Menu, Save, GitCompareArrows, Download } from 'lucide-react'
+import { Menu, Save, GitCompareArrows, Download, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
+import DeleteConfirmDialog from '../common/DeleteConfirmDialog'
 
 interface HeaderProps {
   currentNote?: {
@@ -12,12 +14,21 @@ interface HeaderProps {
 }
 
 export default function Header({ currentNote }: HeaderProps) {
-  const { sidebarOpen, toggleSidebar } = useUIStore()
-  const { saveNote } = useNoteStore()
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const { toggleSidebar, setView } = useUIStore()
+  const { saveNote, deleteNote } = useNoteStore()
 
   const handleSave = () => {
     if (currentNote) {
       saveNote(currentNote.id, {})
+    }
+  }
+
+  const handleDelete = async () => {
+    if (currentNote) {
+      await deleteNote(currentNote.id)
+      setShowDeleteDialog(false)
+      setView('home')
     }
   }
 
@@ -66,9 +77,27 @@ export default function Header({ currentNote }: HeaderProps) {
               <Download className="w-4 h-4" />
               Export
             </button>
+            <button
+              onClick={() => setShowDeleteDialog(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-destructive rounded-md transition-colors"
+              title="Delete Note"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </button>
           </>
         )}
       </div>
+      
+      {/* Delete Confirmation Dialog */}
+      {currentNote && (
+        <DeleteConfirmDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          onConfirm={handleDelete}
+          noteTitle={currentNote.title}
+        />
+      )}
     </header>
   )
 }

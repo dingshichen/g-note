@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import ThemeToggle from '../components/common/ThemeToggle'
-import { Save, RefreshCw, Github } from 'lucide-react'
+import { Save, RefreshCw, Github, Folder, Copy, ExternalLink } from 'lucide-react'
 
 interface GitRemoteSettings {
   url: string
@@ -18,13 +18,29 @@ export default function Settings() {
   })
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
+  const [userDataPath, setUserDataPath] = useState<string>('')
+  const [copyMessage, setCopyMessage] = useState('')
 
-  // Load saved settings
+  // Load saved settings and user data path
   useEffect(() => {
     const savedGitSettings = localStorage.getItem('gitSettings')
     if (savedGitSettings) {
       setGitSettings(JSON.parse(savedGitSettings))
     }
+
+    // Get user data path
+    const fetchUserDataPath = async () => {
+      try {
+        const response = await window.api.fs.getUserDataPath()
+        if (response.success && response.data) {
+          setUserDataPath(response.data.path)
+        }
+      } catch (error) {
+        console.error('Failed to get user data path:', error)
+      }
+    }
+
+    fetchUserDataPath()
   }, [])
 
   const handleGitSettingsSave = async () => {
@@ -89,6 +105,35 @@ export default function Settings() {
     }
   }
 
+  const handleCopyPath = async () => {
+    if (userDataPath) {
+      try {
+        await navigator.clipboard.writeText(userDataPath)
+        setCopyMessage('Path copied to clipboard!')
+        setTimeout(() => setCopyMessage(''), 2000)
+      } catch (err) {
+        console.error('Failed to copy path:', err)
+        setCopyMessage('Failed to copy path')
+        setTimeout(() => setCopyMessage(''), 2000)
+      }
+    }
+  }
+
+  const handleOpenFolder = async () => {
+    try {
+      const response = await window.api.fs.openFolder(userDataPath)
+      if (!response.success) {
+        console.error('Failed to open folder:', response.error)
+        setCopyMessage('Failed to open folder')
+        setTimeout(() => setCopyMessage(''), 2000)
+      }
+    } catch (err) {
+      console.error('Failed to open folder:', err)
+      setCopyMessage('Failed to open folder')
+      setTimeout(() => setCopyMessage(''), 2000)
+    }
+  }
+
   return (
     <div className="h-full overflow-auto">
       <div className="p-8 max-w-4xl mx-auto">
@@ -104,6 +149,56 @@ export default function Settings() {
           <p className="text-sm text-muted-foreground mt-2">
             Current theme: {theme === 'system' ? 'System' : theme}
           </p>
+        </div>
+
+        {/* Storage Settings */}
+        <div className="mb-8 p-6 border rounded-lg bg-card">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <Folder className="w-5 h-5" />
+            Storage
+          </h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Your notes are stored locally in the following directory:
+          </p>
+          
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={userDataPath || 'Loading...'}
+                readOnly
+                className="flex-1 px-3 py-2 border rounded-md bg-muted text-muted-foreground"
+              />
+              <button
+                onClick={handleCopyPath}
+                className="flex items-center gap-2 px-3 py-2 border rounded-md hover:bg-accent transition-colors"
+                title="Copy path to clipboard"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleOpenFolder}
+                className="flex items-center gap-2 px-3 py-2 border rounded-md hover:bg-accent transition-colors"
+                title="Open folder in file explorer"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </button>
+            </div>
+            
+            {copyMessage && (
+              <p className="text-sm text-green-600">{copyMessage}</p>
+            )}
+            
+            <div className="text-xs text-muted-foreground">
+              <p>This directory contains:</p>
+              <ul className="ml-4 mt-1 space-y-1">
+                <li>• notes/ - All your note files in Markdown format</li>
+                <li>• .git/ - Version control history</li>
+                <li>• categories/ - Category definitions</li>
+                <li>• assets/ - Images and other media files</li>
+              </ul>
+            </div>
+          </div>
         </div>
 
         {/* Git Settings */}

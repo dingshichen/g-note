@@ -1,5 +1,5 @@
 import * as git from 'isomorphic-git'
-import { fs } from 'isomorphic-git'
+import * as fs from 'fs'
 import FileService from './FileService'
 import type { GitCommit } from '../../renderer/src/types/git'
 
@@ -22,24 +22,48 @@ class GitService {
   private async ensureInitialized() {
     if (this.initialized) return
 
-    try {
-      // 检查是否已经是 Git 仓库
-      try {
-        const gitRoot = await git.findRoot({ fs, dir: this.repoDir })
-        console.log('Git repository already exists at:', gitRoot)
-      } catch (e) {
-        // 不是仓库，初始化新仓库
-        await git.init({
-          fs,
-          dir: this.repoDir,
-          defaultBranch: 'main'
-        })
-        console.log('Git repository initialized')
+try {
+        // 检查是否已经是 Git 仓库
+        try {
+          const gitRoot = await git.findRoot({ fs, filepath: this.repoDir })
+          console.log('Git repository already exists at:', gitRoot)
+        } catch (e) {
+          // 不是仓库，初始化新仓库
+          await git.init({
+            fs,
+            dir: this.repoDir,
+            defaultBranch: 'main'
+          })
+          
+          // 创建 .gitignore 文件
+          const gitignorePath = `${this.repoDir}/.gitignore`
+          if (!fs.existsSync(gitignorePath)) {
+            await fs.promises.writeFile(gitignorePath, '*.log\nnode_modules/\n.DS_Store\n')
+          }
+          
+          // 添加 .gitignore 并创建初始提交
+          await git.add({
+            fs,
+            dir: this.repoDir,
+            filepath: '.gitignore'
+          })
+          
+          await git.commit({
+            fs,
+            dir: this.repoDir,
+            message: 'Initial commit',
+            author: {
+              name: 'G-Note',
+              email: 'g-note@localhost'
+            }
+          })
+          
+          console.log('Git repository initialized with initial commit')
+        }
+        this.initialized = true
+      } catch (error) {
+        console.error('Error initializing git repo:', error)
       }
-      this.initialized = true
-    } catch (error) {
-      console.error('Error initializing git repo:', error)
-    }
   }
 
   /**
@@ -48,11 +72,19 @@ class GitService {
    * @param message 提交消息，可选
    * @returns 提交的哈希值，失败返回 null
    */
-  async autoCommit(noteId: string, message?: string): Promise<string | null> {
+async autoCommit(noteId: string, message?: string): Promise<string | null> {
     try {
       await this.ensureInitialized()
 
-      const note = await FileService.readFile(`notes/${noteId}.md`)
+      // 检查文件是否存在
+      const filePath = `notes/${noteId}.md`
+      try {
+        await fs.promises.access(`${this.repoDir}/${filePath}`)
+      } catch (e) {
+        console.error('Note file does not exist:', filePath)
+        return null
+      }
+
       const timestamp = new Date().toISOString()
       const commitMessage = message || `Auto-save note ${noteId} at ${timestamp}`
 
@@ -60,7 +92,7 @@ class GitService {
       await git.add({
         fs,
         dir: this.repoDir,
-        filepath: `notes/${noteId}.md`
+        filepath: filePath
       })
 
       // 提交更改
@@ -88,9 +120,17 @@ class GitService {
    * @param limit 返回的历史记录数量限制
    * @returns 提交历史数组
    */
-  async getHistory(noteId: string, limit: number = 20): Promise<GitCommit[]> {
+async getHistory(noteId: string, limit: number = 20): Promise<GitCommit[]> {
     try {
       await this.ensureInitialized()
+
+      // 检查是否有提交记录
+      try {
+        await git.resolveRef({ fs, dir: this.repoDir, ref: 'HEAD' })
+      } catch (e) {
+        // 没有 HEAD，返回空历史
+        return []
+      }
 
       const log = await git.log({
         fs,
@@ -122,8 +162,8 @@ class GitService {
     try {
       await this.ensureInitialized()
 
-      // 从提交中获取内容
-      const { content } = await git.readBlob({
+// 从提交中获取内容
+      const blob = await git.readBlob({
         fs,
         dir: this.repoDir,
         oid: commitHash,
@@ -131,7 +171,7 @@ class GitService {
       })
 
       // 解码并写回文件
-      const contentStr = Buffer.from(content).toString('utf-8')
+      const contentStr = Buffer.from(blob.blob).toString('utf-8')
       await FileService.writeFile(`notes/${noteId}.md`, contentStr)
 
       console.log('Checked out version:', commitHash)
@@ -153,15 +193,15 @@ class GitService {
     try {
       await this.ensureInitialized()
 
-      // 简单的差异实现，可以进一步增强
-      const content1 = await git.readBlob({
+// 简单的差异实现，可以进一步增强
+      const blob1 = await git.readBlob({
         fs,
         dir: this.repoDir,
         oid: commitHash1,
         filepath: `notes/${noteId}.md`
       })
 
-      const content2 = await git.readBlob({
+      const blob2 = await git.readBlob({
         fs,
         dir: this.repoDir,
         oid: commitHash2,
@@ -169,8 +209,8 @@ class GitService {
       })
 
       return {
-        oldContent: Buffer.from(content1.content).toString('utf-8'),
-        newContent: Buffer.from(content2.content).toString('utf-8')
+        oldContent: Buffer.from(blob1.blob).toString('utf-8'),
+        newContent: Buffer.from(blob2.blob).toString('utf-8')
       }
     } catch (error) {
       console.error('Error getting diff:', error)
@@ -202,13 +242,13 @@ class GitService {
         })
       }
 
-      // Push to remote
+// Push to remote
       await git.push({
         fs,
         http: require('isomorphic-git/http/node'),
         dir: this.repoDir,
         remote: 'origin',
-        branch: branch,
+        ref: `refs/heads/${branch}`,
         onAuth: () => ({ username: token, password: '' })
       })
 
@@ -228,15 +268,28 @@ class GitService {
    * @returns 是否成功
    */
   async pull(remoteUrl: string, token: string, branch: string = 'main'): Promise<boolean> {
-    try {
+try {
       await this.ensureInitialized()
+
+      // 确保远程仓库存在
+      const remotes = await git.listRemotes({ fs, dir: this.repoDir })
+      const hasOrigin = remotes.some(r => r.remote === 'origin')
+
+      if (!hasOrigin) {
+        await git.addRemote({
+          fs,
+          dir: this.repoDir,
+          remote: 'origin',
+          url: remoteUrl
+        })
+      }
 
       await git.pull({
         fs,
         http: require('isomorphic-git/http/node'),
         dir: this.repoDir,
         remote: 'origin',
-        branch: branch,
+        ref: `refs/heads/${branch}`,
         onAuth: () => ({ username: token, password: '' }),
         singleBranch: true
       })
@@ -258,13 +311,13 @@ class GitService {
     try {
       await this.ensureInitialized()
 
-      const tagName = `snapshot-${Date.now()}`
+      const tagName = name.includes('snapshot-') ? name : `snapshot-${name}-${Date.now()}`
 
-      await git.tag({
+await git.tag({
         fs,
         dir: this.repoDir,
         ref: tagName,
-        message: name
+        object: 'HEAD'
       })
 
       console.log('Snapshot created:', tagName)

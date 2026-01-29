@@ -34,7 +34,7 @@ export default function SearchBar({ onResults, placeholder = 'Search notes...' }
     }
 
     performSearch()
-  }, [debouncedQuery, onResults])
+  }, [debouncedQuery]) // 移除 onResults 依赖
 
   const handleClear = () => {
     setQuery('')
